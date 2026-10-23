@@ -6,7 +6,7 @@ import subprocess
 
 app = FastAPI(title="OffBeat Backend")
 
-# Habilita o CORS para permitir requisições de qualquer frontend
+# Enable CORS for frontend requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,6 +14,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# User-Agent string to emulate a legitimate desktop web browser
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 @app.get("/")
 def home():
@@ -26,7 +29,12 @@ def search_music(q: str):
             'extract_flat': True,
             'skip_download': True,
             'quiet': True,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            'user_agent': USER_AGENT,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web', 'mweb']
+                }
+            }
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -56,14 +64,20 @@ def stream_music(video_id: str):
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            'user_agent': USER_AGENT,
+            'nocheckcertificate': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web', 'mweb']
+                }
+            }
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             audio_url = None
             
-            # Procura o link direto do stream de áudio
+            # Find direct audio stream URL
             for f in info.get('formats', []):
                 if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
                     audio_url = f.get('url')
@@ -76,17 +90,39 @@ def stream_music(video_id: str):
             raise HTTPException(status_code=404, detail="Stream não encontrado")
             
         def generator():
+            # Pass User-Agent and headers directly to FFmpeg so YouTube won't block or close the connection
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-headers', f'User-Agent: {USER_AGENT}\r\n',
+                '-i', audio_url,
+                '-f', 'mp3',
+                '-acodec', 'libmp3lame',
+                '-ab', '128k',
+                '-'
+            ]
+            
             process = subprocess.Popen(
-                ['ffmpeg', '-i', audio_url, '-f', 'mp3', '-'],
+                ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            while True:
-                data = process.stdout.read(4096)
-                if not data:
-                    break
-                yield data
+            
+            try:
+                while True:
+                    data = process.stdout.read(8192)
+                    if not data:
+                        break
+                    yield data
+            finally:
+                process.kill()
                 
-        return StreamingResponse(generator(), media_type="audio/mpeg")
+        return StreamingResponse(
+            generator(),
+            media_type="audio/mpeg",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "no-cache"
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
