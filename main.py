@@ -21,15 +21,36 @@ def home():
     return {"status": "OffBeat Backend Online"}
 
 @app.get("/api/auth/login")
-def auth_login():
+def auth_login(redirect_uri: str = "https://offbeat-backend-22xy.onrender.com/"):
     """
-    Simulação/Mock do Login via OAuth Google/YouTube.
-    Redireciona de volta para a interface web com dados de usuário de teste.
+    Redireciona para o login real do Google/YouTube OAuth2.
+    Após a autenticação no Google, o usuário é retornado com os dados.
     """
     from fastapi.responses import RedirectResponse
-    # Redireciona de volta para a interface web no Render ou GitHub Pages
-    redirect_target = "https://offbeat-backend-22xy.onrender.com/?access_token=demo_token&name=Usuario+OffBeat&picture=https://i.pravatar.cc/150?img=68"
-    return RedirectResponse(url=redirect_target)
+    import urllib.parse
+
+    # 1. SUBSTITUA PELO SEU CLIENT ID DO GOOGLE CLOUD CONSOLE
+    CLIENT_ID = "SEU_CLIENT_ID_DO_GOOGLE_CLOUD.apps.googleusercontent.com"
+    
+    # Se ainda não configurou o Google OAuth Console, mantemos o parâmetro dinâmico para os testes:
+    if CLIENT_ID.startswith("SEU_CLIENT_ID"):
+        # Retorno de teste utilizando o redirect_uri informado pelo frontend
+        target_url = f"{redirect_uri}?access_token=demo_token&name=Usuario+OffBeat&picture=https://i.pravatar.cc/150?img=68"
+        return RedirectResponse(url=target_url)
+
+    # 2. FLUXO REAL DO OAUTH2 DO GOOGLE / YOUTUBE:
+    google_auth_endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
+    params = {
+        "client_id": CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "token",
+        "scope": "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/userinfo.profile",
+        "include_granted_scopes": "true",
+        "state": "offbeat_auth"
+    }
+    
+    auth_url = f"{google_auth_endpoint}?{urllib.parse.urlencode(params)}"
+    return RedirectResponse(url=auth_url)
 
 @app.get("/api/search")
 def search_music(q: str):
