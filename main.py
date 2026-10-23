@@ -1,28 +1,13 @@
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, JSONResponse
-import yt_dlp
-
-app = FastAPI(title="OffBeat Music Proxy API")
-
-# Permite que o seu aplicativo Web/PWA acesse a API de qualquer lugar
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Configurações do yt-dlp simulando clientes mobile (Android/iOS) para burlar o bloqueio de Bot no Render
+<!-- ... existing code ... -->
+# Configurações do yt-dlp simulando clientes mobile/TV/Web para burlar o bloqueio de Bot no Render
 YDL_OPTIONS_BASE = {
     'quiet': True,
     'no_warnings': True,
     'nocheckcertificate': True,
-    'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'ios', 'web'],
+            'player_client': ['ios', 'mweb', 'android', 'tv', 'web'],
             'skip': ['hls', 'dash']
         }
     }
@@ -66,6 +51,11 @@ def search_youtube(q: str = Query(..., description="Termo de pesquisa ou URL do 
 @app.api_route("/api/stream/{video_id}", methods=["GET", "HEAD"])
 def stream_audio(video_id: str, request: Request):
     """Extrai o link direto de áudio do YouTube configurado para evitar detecção de bot."""
+    
+    # Responder de imediato a requisições HEAD enviadas pelo navegador/player
+    if request.method == "HEAD":
+        return JSONResponse(content={"status": "ok"}, status_code=200)
+
     url = f"https://www.youtube.com/watch?v={video_id}"
     
     ydl_opts = {
@@ -97,10 +87,6 @@ def stream_audio(video_id: str, request: Request):
                 
             if not audio_url:
                 raise HTTPException(status_code=404, detail="Não foi possível extrair o áudio deste vídeo.")
-                
-            # Se for requisição HEAD de pré-checagem do navegador
-            if request.method == "HEAD":
-                return JSONResponse(content={"status": "ok"}, status_code=200)
 
             # Redireciona diretamente para o fluxo direto de áudio extraído
             return RedirectResponse(url=audio_url, status_code=307)
