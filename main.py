@@ -18,13 +18,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configurações do OAuth do Google/YouTube (Defina no painel do Render > Environment Variables)
+# Configurações do OAuth do Google/YouTube (Defina no painel do Render > Environment Variables se desejar)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("REDIRECT_URI", "https://offbeat-backend-22xy.onrender.com/api/auth/callback")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://offbeat-music.onrender.com")
 
-# User-Agent atualizado para simular navegador real
+# User-Agent atualizado para simular navegador real e evitar bloqueios do YouTube
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
 @app.get("/")
