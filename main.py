@@ -20,6 +20,17 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 def home():
     return {"status": "OffBeat Backend Online"}
 
+@app.get("/api/auth/login")
+def auth_login():
+    """
+    Simulação/Mock do Login via OAuth Google/YouTube.
+    Redireciona de volta para a interface web com dados de usuário de teste.
+    """
+    from fastapi.responses import RedirectResponse
+    # Redireciona de volta para a interface web no Render ou GitHub Pages
+    redirect_target = "https://offbeat-backend-22xy.onrender.com/?access_token=demo_token&name=Usuario+OffBeat&picture=https://i.pravatar.cc/150?img=68"
+    return RedirectResponse(url=redirect_target)
+
 @app.get("/api/search")
 def search_music(q: str):
     try:
