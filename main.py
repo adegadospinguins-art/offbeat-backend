@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 import yt_dlp
 import subprocess
+import os
+import requests
 
 app = FastAPI(title="OffBeat Backend")
 
@@ -15,12 +17,61 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configurações do OAuth do Google/YouTube (Defina essas variáveis no seu ambiente ou no Render)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "SEU_CLIENT_ID_AQUI")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "SEU_CLIENT_SECRET_AQUI")
+REDIRECT_URI = os.getenv("REDIRECT_URI", "https://offbeat-backend-22xy.onrender.com/api/auth/callback")
+
 # User-Agent string to emulate a legitimate desktop web browser
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 @app.get("/")
 def home():
     return {"status": "OffBeat Backend Online"}
+
+@app.get("/api/auth/login")
+def login_youtube():
+    """Redireciona o usuário para a página de permissões da conta do Google/YouTube."""
+    google_auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={GOOGLE_CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        "&response_type=code"
+        "&scope=https://www.googleapis.com/auth/youtube.readonly%20email%20profile"
+        "&access_type=offline"
+        "&prompt=consent"
+    )
+    return RedirectResponse(url=google_auth_url)
+
+@app.get("/api/auth/callback")
+def auth_callback(code: str):
+    """Recebe o código de autorização do Google, troca por um Access Token e obtém os dados do perfil."""
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": REDIRECT_URI,
+        "grant_type": "authorization_code"
+    }
+    
+    token_response = requests.post(token_url, data=data)
+    if token_response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Falha na autenticação do Google")
+        
+    tokens = token_response.json()
+    access_token = tokens.get("access_token")
+    
+    # Busca dados básicos do perfil do usuário
+    user_info_resp = requests.get(
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    user_info = user_info_resp.json() if user_info_resp.status_code == 200 else {}
+    
+    # Redireciona para o frontend repassando o token e informações do usuário via parâmetros de URL
+    frontend_redirect_url = f"https://offbeat-music.onrender.com?access_token={access_token}&name={user_info.get('name', '')}&picture={user_info.get('picture', '')}"
+    return RedirectResponse(url=frontend_redirect_url)
 
 @app.get("/api/search")
 def search_music(q: str):
