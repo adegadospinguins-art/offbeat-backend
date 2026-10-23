@@ -1,13 +1,14 @@
 <!-- ... existing code ... -->
-# Configurações do yt-dlp simulando clientes mobile/TV/Web para burlar o bloqueio de Bot no Render
+# Configurações otimizadas do yt-dlp usando clientes de TV/VR para burlar o bloqueio de bot do YouTube no Render
 YDL_OPTIONS_BASE = {
     'quiet': True,
     'no_warnings': True,
     'nocheckcertificate': True,
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'geo_bypass': True,
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'mweb', 'android', 'tv', 'web'],
+            'player_client': ['android_vr', 'tv', 'web_creator', 'mweb'],
             'skip': ['hls', 'dash']
         }
     }
@@ -50,7 +51,7 @@ def search_youtube(q: str = Query(..., description="Termo de pesquisa ou URL do 
 
 @app.api_route("/api/stream/{video_id}", methods=["GET", "HEAD"])
 def stream_audio(video_id: str, request: Request):
-    """Extrai o link direto de áudio do YouTube configurado para evitar detecção de bot."""
+    """Extrai o link direto de áudio do YouTube com bypass de detecção de bot e fallback."""
     
     # Responder de imediato a requisições HEAD enviadas pelo navegador/player
     if request.method == "HEAD":
@@ -63,32 +64,44 @@ def stream_audio(video_id: str, request: Request):
         'format': 'bestaudio/best',
     }
     
+    # 1. Tativa via yt-dlp usando cliente Android VR / TV
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # Encontra o melhor formato apenas de áudio
             formats = info.get('formats', [])
             audio_url = None
             
-            # 1. Procura primeiro formatos apenas de áudio
             for f in formats:
                 if f.get('vcodec') == 'none' and f.get('url'):
                     audio_url = f.get('url')
                     break
             
-            # 2. Fallback para a URL direta se encontrada no topo
             if not audio_url and info.get('url'):
                 audio_url = info.get('url')
 
-            # 3. Fallback genérico para o primeiro formato disponível
             if not audio_url and formats:
                 audio_url = formats[0].get('url')
                 
-            if not audio_url:
-                raise HTTPException(status_code=404, detail="Não foi possível extrair o áudio deste vídeo.")
+            if audio_url:
+                return RedirectResponse(url=audio_url, status_code=307)
+    except Exception as err:
+        pass  # Fallback abaixo em caso de falha de extração ou bloqueio de IP
 
-            # Redireciona diretamente para o fluxo direto de áudio extraído
-            return RedirectResponse(url=audio_url, status_code=307)
+    # 2. Fallback via proxy público de áudio (Cobalt/Piped Stream API)
+    try:
+        piped_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
+        import urllib.request
+        import json
+        req = urllib.request.Request(piped_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            audio_streams = data.get('audioStreams', [])
+            if audio_streams and len(audio_streams) > 0:
+                direct_url = audio_streams[0].get('url')
+                if direct_url:
+                    return RedirectResponse(url=direct_url, status_code=307)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        pass
+
+    raise HTTPException(status_code=500, detail="Não foi possível extrair o fluxo de áudio para este vídeo.")
